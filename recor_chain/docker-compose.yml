@@ -1,0 +1,87 @@
+version: "3.8"
+
+services:
+  api-gateway:
+    build: ./api-gateway
+    ports:
+      - "8080:8080"
+    depends_on:
+      - ai-inference
+      - llm-inference
+      - redis
+      - chromadb
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+    networks:
+      - ai_network
+
+  ai-inference:
+    build: ./ai-inference
+    ports:
+      - "8001:8001"
+    networks:
+      - ai_network
+
+  llm-inference:
+    build: ./llm-inference
+    ports:
+      - "9002:9002"
+    networks:
+      - ai_network
+
+  redis:
+    image: redis:latest
+    privileged: true
+    ports:
+      - "6399:6379"
+    networks:
+      - ai_network
+
+  chromadb:
+    image: chromadb/chroma
+    ports:
+      - "8000:8000"
+    networks:
+      - ai_network
+    environment:
+      - OPENBLAS_NUM_THREADS=2
+    ulimits:
+      nproc: 65535
+      nofile:
+        soft: 65535
+        hard: 65535
+    security_opt:
+      - seccomp=unconfined
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    networks:
+      - ai_network
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    command: [ "--config=/etc/otel-collector-config.yml" ]
+    volumes:
+      - ./otel-collector-config.yml:/etc/otel-collector-config.yml
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+    networks:
+      - ai_network
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    ports:
+      - "16686:16686" # Web UI
+      - "14250:14250" # OTLP Collector
+      - "14268:14268" # Trace ingestion
+    environment:
+      - COLLECTOR_ZIPKIN_HTTP_PORT=9411
+    networks:
+      - ai_network
+
+networks:
+  ai_network:
+    driver: bridge
